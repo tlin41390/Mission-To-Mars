@@ -1,100 +1,130 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-#Imports for Splinter/BeautifulSoup
+# Import Splinter, BeautifulSoup, and Pandas
 from splinter import Browser
 from bs4 import BeautifulSoup as soup
 import pandas as pd
 import datetime as dt
 
-executable_path = {'executable_path':"C://Users/Terence Lin/Documents/chromedriver/chromedriver.exe"}
-browser = Browser('chrome',**executable_path,headless=False)
+
+def scrape_all():
+    # Initiate headless driver for deployment
+    browser = Browser("chrome", executable_path="chromedriver", headless=True)
+
+    news_title, news_paragraph = mars_news(browser)
+
+    # Run all scraping functions and store results in a dictionary
+    data = {
+        "news_title": news_title,
+        "news_paragraph": news_paragraph,
+        "featured_image": featured_image(browser),
+        "facts": mars_facts(),
+        "hemisphere_data": mars_hemisphere(browser),
+        "last_modified": dt.datetime.now()
+    }
+
+    # Stop webdriver and return data
+    browser.quit()
+    return data
+
 
 def mars_news(browser):
 
-    #Vist mars NASA news webpage
+    # Scrape Mars News
+    # Visit the mars nasa news site
     url = 'https://mars.nasa.gov/news/'
     browser.visit(url)
-    
-    #Delay for loading the page
-    browser.is_element_present_by_css("ul.item_list li.slide",wait_time=1)
 
-    #Set up Html Parser
-    html=browser.html
-    news_soup = soup(html,'html.parser')
+    # Optional delay for loading the page
+    browser.is_element_present_by_css("ul.item_list li.slide", wait_time=1)
 
-    #try/except for error handling
+    # Convert the browser html to a soup object and then quit the browser
+    html = browser.html
+    news_soup = soup(html, 'html.parser')
+
+    # Add try/except for error handling
     try:
-        slide_elem = news_soup.select_one('ul.item_list li.slide')
-        #Use parent element to locate first 'a' tag and then save as 'news_title'
-        news_title=slide_elem.find("div",class_='content_title').get_text()
-        #Use the parent element to find paragraph text
-        news_p=slide_elem.find("div",class_="article_teaser_body").get_text()
+        slide_elem = news_soup.select_one("ul.item_list li.slide")
+        # Use the parent element to find the first 'a' tag and save it as 'news_title'
+        news_title = slide_elem.find("div", class_="content_title").get_text()
+        # Use the parent element to find the paragraph text
+        news_p = slide_elem.find("div", class_="article_teaser_body").get_text()
 
     except AttributeError:
         return None, None
 
     return news_title, news_p
 
+
 def featured_image(browser):
-    ### Visit the URL
-    url="https://data-class-jpl-space.s3.amazonaws.com/JPL_Space/index.html"
+    # Visit URL
+    url = 'https://data-class-jpl-space.s3.amazonaws.com/JPL_Space/index.html'
     browser.visit(url)
 
+    # Find and click the full image button
     full_image_elem = browser.find_by_tag('button')[1]
     full_image_elem.click()
 
-    #Parse resulting html with soup
+    # Parse the resulting html with soup
     html = browser.html
-    img_soup=soup(html,'html.parser')
+    img_soup = soup(html, 'html.parser')
 
-    #Add try/except for error handling
+    # Add try/except for error handling
     try:
-        #Find relative image url
-        img_url_rel = img_soup.find("img",class_="fancybox-image").get("src")
+        # Find the relative image url
+        img_url_rel = img_soup.find('img', class_='fancybox-image').get('src')
 
     except AttributeError:
         return None
 
-    #Use base URL to create absolute URL
-    img_url=f'https://data-class-jpl-space.s3.amazonaws.com/JPL_Space/{img_url_rel}'
+    # Use the base url to create an absolute url
+    img_url = f'https://data-class-jpl-space.s3.amazonaws.com/JPL_Space/{img_url_rel}'
 
     return img_url
 
 def mars_facts():
+    # Add try/except for error handling
     try:
-        # use 'read_html' to scrape facts table and convert into dataframe
-        df=pd.read_html('https://space-facts.com/mars/')[0]
+        # Use 'read_html' to scrape the facts table into a dataframe
+        df = pd.read_html('http://space-facts.com/mars/')[0]
 
     except BaseException:
         return None
 
     # Assign columns and set index of dataframe
-    df.columns=['description','value']
-    df.set_index('description',inplace=True)
+    df.columns=['Description', 'Mars']
+    df.set_index('Description', inplace=True)
 
-    #Convert datframe into HTML format, add bootstrap
-    return df.to_html()
+    # Convert dataframe into HTML format, add bootstrap
+    return df.to_html(classes="table table-striped")
 
-def scrape_all():
-    # Initiate headless driver for deployment
-    browser= Browser("chrome", executable_path="chromedriver", headless=True)
+def mars_hemisphere(browser):
+    #Visit the URL
+    url = 'https://astrogeology.usgs.gov/search/results?q=hemisphere+enhanced&k1=target&v1=Mars'
+    browser.visit(url)
+
+    #Parse the resulting html with soup
+    hemisphere_image_urls = []
+
+    for n in range(4):
+        thumbnail =browser.find_by_tag('h3')[n]
+        thumbnail.click()
     
-    news_title, news_paragraph = mars_news(browser)
+        html=browser.html
+        hemisphere_soup = soup(html,'html.parser')
+    
+        url = hemisphere_soup.find("li")
+        title = hemisphere_soup.find("h2",class_="title").get_text()
+        hemisphere_url=url.find("a").get('href')
+    
+        data = {"url":hemisphere_url,
+                "title":title}
+        hemisphere_image_urls.append(data)
+        browser.back()
 
-    # Run all scraping functions then store results to dictionary
-    data = {
-        "news_title": news_title,
-        "news_paragraph": news_paragraph,
-        "featured_image": featured_image(browser),
-        "facts": mars_facts(),
-        "last_modified": dt.datetime.now()
-    }
 
-    #Stop webdriver and return the data
-    browser.quit()
-    return data
+    return hemisphere_image_urls
 
-if __name__=="__main__":
-    # If running as scrpit, print scraped data
+
+if __name__ == "__main__":
+
+    # If running as script, print scraped data
     print(scrape_all())
